@@ -44,6 +44,7 @@ class HMM:
             raise Exception('Transition matrix and initial state probability distribution have different numbers of rows')
 
         self._n_states = len(transitions)
+        self._n_symbols = len(emissions[0])
         
         self._transitions = numpy.array(transitions)
         self._log_transitions = numpy.log(self._transitions)
@@ -83,14 +84,8 @@ State transitions are set randomly.'''
         return zip(*path)
 
     def forward(self, observations):
-        print('initial: {0}'.format(self._initial))
-        print('emissions:\n{0}'.format(self._emissions))
-        print('observations[0]: {0}'.format(observations[0]))
-
-        print('emissions[observations[0]]: {0}'.format(self._emissions[:,observations[0]]))
         log_alpha = self._log_initial + self._log_emissions[:,observations[0]]
         log_alpha_series = [log_alpha]
-        print('alpha_0: {0}'.format(numpy.exp(log_alpha)))
 
         for y in observations[1:]:
             log_alpha = (self._log_emissions[:,y] +
@@ -102,13 +97,6 @@ State transitions are set randomly.'''
         return numpy.array(log_alpha_series)
     
     def backward(self, observations):
-        print('initial: {0}'.format(self._initial))
-        print('emissions:\n{0}'.format(self._emissions))
-        print('log_transitions:\n{0}'.format(self._log_transitions))
-        print('transitions:\n{0}'.format(self._transitions))
-        print('observations[0]: {0}'.format(observations[0]))
-
-        print('emissions[observations[0]]: {0}'.format(self._emissions[:,observations[0]]))
         log_beta = numpy.array([ 0.0 ] * self._n_states)
         log_beta_series = [log_beta]
         
@@ -130,47 +118,46 @@ State transitions are set randomly.'''
         log_gamma = numpy.array([n-d for n,d in zip(gamma_num, gamma_den)])
         gamma = numpy.exp(log_gamma)
         
-        print('log_alpha:\n{0}'.format(log_alpha))
-        print('alpha:\n{0}'.format(numpy.exp(log_alpha)))
+        print('\nalpha:\n{0}'.format(numpy.exp(log_alpha)))
+        print('\nbeta:\n{0}'.format(numpy.exp(log_beta)))
+        print('\ngamma:\n{0}'.format(gamma))
         
-        print('log_beta:\n{0}'.format(log_beta))
-        print('beta:\n{0}'.format(numpy.exp(log_beta)))
-
-        print('gamma_num:\n{0}'.format(gamma_num))
-        print('gamma_den:\n{0}'.format(gamma_den))
-        print('log_gamma: {0}'.format(log_gamma))
-        print('gamma:\n{0}'.format(gamma))
-        
-        new_transition_den = sum(gamma)
-
         new_transition_num = numpy.zeros((self._n_states, self._n_states))
+        new_transition_den = numpy.zeros(self._n_states)
 
-        for log_alpha_k, log_beta_k, y in zip(log_alpha[:-1], log_beta[1:], observations[1:]):
+        for gamma_k, log_alpha_k, log_beta_k, y in zip(gamma[:-1], log_alpha[:-1], log_beta[1:], observations[1:]):
             log_xi_num = numpy.empty((self._n_states, self._n_states))
             for i in range(self._n_states):
                 for j in range(self._n_states):
                     log_xi_num[i,j] = log_alpha_k[i] + log_beta_k[j] + self._log_transitions[i][j] + self._log_emissions[j][y]
-            print('xi_num:\n{0}'.format(numpy.exp(log_xi_num)))
             
-            # This is a bit ugly because numpy turns single rows/colums into vectors.
-            # sum_rows_of_log_likelihoods requires a matrix argument.
+            # This clumsy because numpy turns single rows/colums into vectors.
+            # sum_rows_of_log_likelihoods requires a matrix argument, so we force it to be a matrix.
             log_xi_den = sum_rows_of_log_likelihoods(numpy.array([[r] for r in sum_rows_of_log_likelihoods(log_xi_num)]))
             
             xi = numpy.exp(log_xi_num - log_xi_den)
-            print('xi:\n{0}'.format(xi))
             
             new_transition_num += xi
+            new_transition_den += gamma_k
+            
             
         log_initial = log_gamma[0]
         initial = numpy.exp(log_initial)
 
-        print('\nnew initial: {0}'.format(initial))
-        print('old initial: {0}'.format(self._initial))
-        
-        new_transition = (new_transition_num.T/new_transition_den).T
-        print('new_transition_num:\n{0}'.format(new_transition_num))
-        print('new_transition_den: {0}'.format(new_transition_den))
+        print('\nold_initial: {0}'.format(self._initial))
+        print('new_initial: {0}'.format(initial))
 
-        print('\nnew_transition:\n{0}'.format(new_transition))
-        print('old_transition:\n{0}'.format(self._transitions))
+        new_transition = (new_transition_num.T/new_transition_den).T
         
+        print('\nold_transition:\n{0}'.format(self._transitions))
+        print('\nnew_transition:\n{0}'.format(new_transition))
+
+        new_emission_den = new_transition_den + gamma[-1]
+
+        ind = numpy.array(range(self._n_symbols))
+        new_emission_num = sum((numpy.outer(gamma_k, (ind == yk)) for yk, gamma_k in zip(observations, gamma)))
+        new_emission = (new_emission_num.T/new_emission_den).T
+
+        print('\nold_emission:\n{0}'.format(self._emissions))
+        print('\nnew_emission:\n{0}'.format(new_emission))
+
