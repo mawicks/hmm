@@ -42,6 +42,8 @@ class HMM:
         
         if len(transitions) != len(initial):
             raise Exception('Transition matrix and initial state probability distribution have different numbers of rows')
+
+        self._n_states = len(transitions)
         
         self._transitions = numpy.array(transitions)
         self._log_transitions = numpy.log(self._transitions)
@@ -92,7 +94,9 @@ State transitions are set randomly.'''
 
         for y in observations[1:]:
             log_alpha = (self._log_emissions[:,y] +
-                         sum_rows_of_log_likelihoods(numpy.array([la + ltr for la, ltr in zip(log_alpha, self._log_transitions)])))
+                         sum_rows_of_log_likelihoods(numpy.array([log_alpha_i + log_trans_i
+                                                                  for log_alpha_i, log_trans_i
+                                                                  in zip(log_alpha, self._log_transitions)])))
             log_alpha_series.append(log_alpha)
 
         return numpy.array(log_alpha_series)
@@ -105,12 +109,13 @@ State transitions are set randomly.'''
         print('observations[0]: {0}'.format(observations[0]))
 
         print('emissions[observations[0]]: {0}'.format(self._emissions[:,observations[0]]))
-        log_beta = numpy.array([ 0.0 ] * len(self._initial))
+        log_beta = numpy.array([ 0.0 ] * self._n_states)
         log_beta_series = [log_beta]
         
         for y in reversed(observations[1:]):
-            log_beta = sum_rows_of_log_likelihoods(numpy.array([lb + lem[y] + ltr
-                                                                for lb, ltr, lem in zip(log_beta, self._log_transitions.T, self._log_emissions)]))
+            log_beta = sum_rows_of_log_likelihoods(numpy.array([log_beta_j + log_em_j[y] + log_trans_j
+                                                                for log_beta_j, log_trans_j, log_em_j
+                                                                in zip(log_beta, self._log_transitions.T, self._log_emissions)]))
             log_beta_series.append(log_beta)
             
         return numpy.array(list(reversed(log_beta_series)))
@@ -138,17 +143,15 @@ State transitions are set randomly.'''
         
         new_transition_den = sum(gamma)
 
-        new_transition_num = numpy.zeros((len(self._initial), len(self._initial)))
+        new_transition_num = numpy.zeros((self._n_states, self._n_states))
 
         for log_alpha_k, log_beta_k, y in zip(log_alpha[:-1], log_beta[1:], observations[1:]):
-            row_prod = numpy.array(list(log_alpha_i + log_transition_i
-                                        for log_alpha_i, log_transition_i
-                                        in zip(log_alpha_k, self._log_transitions)))
-
-            log_xi_num = numpy.array(list(log_beta_j + col + em[y]
-                                      for log_beta_j,col,em
-                                      in zip(log_beta_k, row_prod.T, self._log_emissions))).T
-
+            log_xi_num = numpy.empty((self._n_states, self._n_states))
+            for i in range(self._n_states):
+                for j in range(self._n_states):
+                    log_xi_num[i,j] = log_alpha_k[i] + log_beta_k[j] + self._log_transitions[i][j] + self._log_emissions[j][y]
+            print('xi_num:\n{0}'.format(numpy.exp(log_xi_num)))
+            
             # This is a bit ugly because numpy turns single rows/colums into vectors.
             # sum_rows_of_log_likelihoods requires a matrix argument.
             log_xi_den = sum_rows_of_log_likelihoods(numpy.array([[r] for r in sum_rows_of_log_likelihoods(log_xi_num)]))
