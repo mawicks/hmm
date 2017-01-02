@@ -26,6 +26,18 @@ def sum_rows_of_log_likelihoods(a):
                        axis=1)) + col_max
 
     return result
+
+def print_large(array, name):
+    print ('{0}:'.format(name))
+    
+    if len(array) < 10:
+        print(array)
+    else:
+        for r in array[:5]:
+            print ('\t{0}'.format(r))
+        print ('\t...')
+        for r in array[-5:]:
+            print ('\t{0}'.format(r))
     
 class HMM:
     def set_parameters(self, transitions=None, emissions=None, initial=None):
@@ -118,9 +130,9 @@ State transitions are set randomly.'''
         log_gamma = numpy.array([n-d for n,d in zip(gamma_num, gamma_den)])
         gamma = numpy.exp(log_gamma)
         
-        print('\nalpha:\n{0}'.format(numpy.exp(log_alpha)))
-        print('\nbeta:\n{0}'.format(numpy.exp(log_beta)))
-        print('\ngamma:\n{0}'.format(gamma))
+        print_large(log_alpha, 'log alpha')
+        print_large(log_beta, 'log beta')
+        print_large(gamma, 'gamma')
         
         new_transition_num = numpy.zeros((self._n_states, self._n_states))
         new_transition_den = numpy.zeros(self._n_states)
@@ -136,16 +148,15 @@ State transitions are set randomly.'''
             log_xi_den = sum_rows_of_log_likelihoods(numpy.array([[r] for r in sum_rows_of_log_likelihoods(log_xi_num)]))
             
             xi = numpy.exp(log_xi_num - log_xi_den)
+#            print('xi:\n{0}'.format(xi))
             
             new_transition_num += xi
             new_transition_den += gamma_k
             
-            
-        log_initial = log_gamma[0]
-        initial = numpy.exp(log_initial)
+        new_initial = gamma[0]
 
         print('\nold_initial: {0}'.format(self._initial))
-        print('new_initial: {0}'.format(initial))
+        print('new_initial: {0}'.format(new_initial))
 
         new_transition = (new_transition_num.T/new_transition_den).T
         
@@ -160,4 +171,6 @@ State transitions are set randomly.'''
 
         print('\nold_emission:\n{0}'.format(self._emissions))
         print('\nnew_emission:\n{0}'.format(new_emission))
+
+        return new_transition, new_emission, new_initial
 
