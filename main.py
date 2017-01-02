@@ -14,7 +14,7 @@ example1.update(e2)
 # Example 2
 print('********* Example 2 ********')
 
-# Set some know parameters and use them to generate an observation sequence.
+# Set some known parameters and use them to generate an observation sequence.
 example2 = hmm.HMM()
 example2.set_parameters(transitions = [[0.90, 0.10], [0.20, 0.80]],
                         emissions = [[0.1, 0.2, 0.7], [0.5, 0.3, 0.2]],
@@ -35,6 +35,7 @@ example3 = hmm.HMM()
 example3.set_parameters(transitions = [[0.6, 0.4], [0.4, 0.6]],
                         emissions = [[0.33, 0.33, 0.34], [0.05, 0.55, 0.40]],
                         initial = [0.3, 0.7])
+example3.random_parameters(2, 3)
 
 print('observations: {0}'.format(e[:50]))
 print('actual state sequence: {0}'.format(s[:50]))
@@ -43,3 +44,8 @@ for i in range(50):
     print (' ***** ITERATION {0} *****'.format(i))
     tr, em, init = example3.update(e)
     example3.set_parameters(transitions = tr, emissions = em, initial = init)
+
+print('final parameters:')
+print('transitions:\n{0}'.format(tr))
+print('emissions:\n{0}'.format(em))
+print('initial:\n{0}'.format(init))

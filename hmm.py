@@ -16,10 +16,8 @@ def random_distribution(n):
     s = sum(l)
     return tuple(x / s for x in l)
 
-def row_sum(a, b):
-    return (a_i + b_i for a_i, b_i in zip(a, b))
-
-def sum_rows_of_log_likelihoods(a):
+def log_sum_exp(a):
+    '''Compute log(sum[exp(row) for row in a]) without underflows'''
     col_max = numpy.max(a, axis=0)
 
     result = numpy.log(numpy.sum(numpy.exp(numpy.array([c - m for c, m in zip(a.T, col_max)])),
@@ -67,16 +65,11 @@ class HMM:
         self._initial = numpy.array(initial)
         self._log_initial = numpy.log(self._initial)
         
-    def random_parameters(self, n_states, emission_counts):
+    def random_parameters(self, n_states, n_symbols):
         '''Set a random set of initial parameters.  Counts of observations are used to estimate an initial set of emission probabilities.
 State transitions are set randomly.'''
-        m = len(emission_counts)
-        sequence_length = sum(emission_counts)
-
-        emissions = tuple( float(count+1) / float(sequence_length+m) for count in emission_counts )
-        
         self.set_parameters(tuple(random_distribution(n_states) for _ in range(n_states)),
-                            tuple(emissions for _ in range(n_states)),
+                            tuple(random_distribution(n_symbols) for _ in range(n_states)),
                             random_distribution(n_states))
         
     def sim(self, n):
@@ -96,12 +89,13 @@ State transitions are set randomly.'''
         return zip(*path)
 
     def forward(self, observations):
+        '''Apply so-called "forward procedure" and return sequence of alpha probabilities'''
         log_alpha = self._log_initial + self._log_emissions[:,observations[0]]
         log_alpha_series = [log_alpha]
 
         for y in observations[1:]:
             log_alpha = (self._log_emissions[:,y] +
-                         sum_rows_of_log_likelihoods(numpy.array([log_alpha_i + log_trans_i
+                         log_sum_exp(numpy.array([log_alpha_i + log_trans_i
                                                                   for log_alpha_i, log_trans_i
                                                                   in zip(log_alpha, self._log_transitions)])))
             log_alpha_series.append(log_alpha)
@@ -109,11 +103,12 @@ State transitions are set randomly.'''
         return numpy.array(log_alpha_series)
     
     def backward(self, observations):
+        '''Apply so-called "backward procedure" and return sequence of beta probabilities'''
         log_beta = numpy.array([ 0.0 ] * self._n_states)
         log_beta_series = [log_beta]
         
         for y in reversed(observations[1:]):
-            log_beta = sum_rows_of_log_likelihoods(numpy.array([log_beta_j + log_em_j[y] + log_trans_j
+            log_beta = log_sum_exp(numpy.array([log_beta_j + log_em_j[y] + log_trans_j
                                                                 for log_beta_j, log_trans_j, log_em_j
                                                                 in zip(log_beta, self._log_transitions.T, self._log_emissions)]))
             log_beta_series.append(log_beta)
@@ -121,14 +116,17 @@ State transitions are set randomly.'''
         return numpy.array(list(reversed(log_beta_series)))
         
     def update(self, observations):
+        '''Perform one iteration of Baum-Welch algorithm and return new parameter estimate:
+        transition, emission, pi = update(observations)'''
+        
         log_alpha = self.forward(observations)
         log_beta = self.backward(observations)
 
         gamma_num = log_alpha + log_beta
-        gamma_den = sum_rows_of_log_likelihoods(gamma_num.T)
-        
-        log_gamma = numpy.array([n-d for n,d in zip(gamma_num, gamma_den)])
-        gamma = numpy.exp(log_gamma)
+        gamma = numpy.exp(numpy.array([n-d
+                                       for n,d
+                                       in zip(gamma_num,
+                                              log_sum_exp(gamma_num.T))]))
         
         print_large(log_alpha, 'log alpha')
         print_large(log_beta, 'log beta')
@@ -144,8 +142,8 @@ State transitions are set randomly.'''
                     log_xi_num[i,j] = log_alpha_k[i] + log_beta_k[j] + self._log_transitions[i][j] + self._log_emissions[j][y]
             
             # This clumsy because numpy turns single rows/colums into vectors.
-            # sum_rows_of_log_likelihoods requires a matrix argument, so we force it to be a matrix.
-            log_xi_den = sum_rows_of_log_likelihoods(numpy.array([[r] for r in sum_rows_of_log_likelihoods(log_xi_num)]))
+            # log_sum_exp requires a matrix argument, so we force it to be a matrix.
+            log_xi_den = log_sum_exp(numpy.array([[r] for r in log_sum_exp(log_xi_num)]))
             
             xi = numpy.exp(log_xi_num - log_xi_den)
 #            print('xi:\n{0}'.format(xi))
@@ -153,24 +151,14 @@ State transitions are set randomly.'''
             new_transition_num += xi
             new_transition_den += gamma_k
             
-        new_initial = gamma[0]
-
-        print('\nold_initial: {0}'.format(self._initial))
-        print('new_initial: {0}'.format(new_initial))
-
         new_transition = (new_transition_num.T/new_transition_den).T
-        
-        print('\nold_transition:\n{0}'.format(self._transitions))
-        print('\nnew_transition:\n{0}'.format(new_transition))
-
-        new_emission_den = new_transition_den + gamma[-1]
 
         ind = numpy.array(range(self._n_symbols))
         new_emission_num = sum((numpy.outer(gamma_k, (ind == yk)) for yk, gamma_k in zip(observations, gamma)))
+        new_emission_den = new_transition_den + gamma[-1]
         new_emission = (new_emission_num.T/new_emission_den).T
 
-        print('\nold_emission:\n{0}'.format(self._emissions))
-        print('\nnew_emission:\n{0}'.format(new_emission))
-
+        new_initial = gamma[0]
+        
         return new_transition, new_emission, new_initial
 
