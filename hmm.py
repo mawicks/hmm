@@ -1,7 +1,10 @@
+import logging
 from tools import cumsum, find
 from random import randrange, uniform
 import numpy
 import operator
+
+logger = logging.getLogger()
 
 def draw(cdf):
     '''Draw a random sample from the distribution defined by cdf.  The values in a cdf must be non-descreasing, but need not be normalized.
@@ -57,13 +60,13 @@ class HMM:
         self._n_symbols = len(emissions[0])
         
         self._transitions = numpy.array(transitions)
-        self._log_transitions = numpy.log(self._transitions)
+        self._log_transitions = numpy.log(self._transitions+1e-30)
         
         self._emissions = numpy.array(emissions)
-        self._log_emissions = numpy.log(self._emissions)
+        self._log_emissions = numpy.log(self._emissions+1e-30)
         
         self._initial = numpy.array(initial)
-        self._log_initial = numpy.log(self._initial)
+        self._log_initial = numpy.log(self._initial+1e-30)
         
     def random_parameters(self, n_states, n_symbols):
         '''Set a random set of initial parameters.  Counts of observations are used to estimate an initial set of emission probabilities.
@@ -90,6 +93,8 @@ State transitions are set randomly.'''
 
     def forward(self, observations):
         '''Apply so-called "forward procedure" and return sequence of alpha probabilities'''
+        logger.info('forward() entered')
+        
         log_alpha = self._log_initial + self._log_emissions[:,observations[0]]
         log_alpha_series = [log_alpha]
 
@@ -100,10 +105,13 @@ State transitions are set randomly.'''
                                                                   in zip(log_alpha, self._log_transitions)])))
             log_alpha_series.append(log_alpha)
 
+        logger.info('forward() exited')
         return numpy.array(log_alpha_series)
     
     def backward(self, observations):
         '''Apply so-called "backward procedure" and return sequence of beta probabilities'''
+        logger.info('backward() entered')
+
         log_beta = numpy.array([ 0.0 ] * self._n_states)
         log_beta_series = [log_beta]
         
@@ -113,12 +121,16 @@ State transitions are set randomly.'''
                                                                 in zip(log_beta, self._log_transitions.T, self._log_emissions)]))
             log_beta_series.append(log_beta)
             
+        logger.info('backward() exited')
         return numpy.array(list(reversed(log_beta_series)))
         
     def update(self, observations):
-        '''Perform one iteration of Baum-Welch algorithm and return new parameter estimate:
-        transition, emission, pi = update(observations)'''
-        
+        '''Perform one iteration of Baum-Welch algorithm and return new parameter estimate and observation likelihood:
+        transition, emission, pi = update(observations)
+The observation likelihood is for the observed sequence given the original parameters, not the new parameters.
+'''
+        logger.info('update() entered')
+
         log_alpha = self.forward(observations)
         log_beta = self.backward(observations)
 
@@ -128,9 +140,9 @@ State transitions are set randomly.'''
                                        in zip(gamma_num,
                                               log_sum_exp(gamma_num.T))]))
         
-        print_large(log_alpha, 'log alpha')
-        print_large(log_beta, 'log beta')
-        print_large(gamma, 'gamma')
+#        print_large(log_alpha, 'log alpha')
+#        print_large(log_beta, 'log beta')
+#        print_large(gamma, 'gamma')
         
         new_transition_num = numpy.zeros((self._n_states, self._n_states))
         new_transition_den = numpy.zeros(self._n_states)
@@ -159,6 +171,10 @@ State transitions are set randomly.'''
         new_emission = (new_emission_num.T/new_emission_den).T
 
         new_initial = gamma[0]
+
+        # Same clumsy trick
+        observation_likelihood = log_sum_exp(numpy.array([[la] for la in log_alpha[-1]]))
         
-        return new_transition, new_emission, new_initial
+        logger.info('update() exited')
+        return new_transition, new_emission, new_initial, float(observation_likelihood)
 

@@ -16,7 +16,7 @@ print('********* Example 2 ********')
 
 # Set some known parameters and use them to generate an observation sequence.
 example2 = hmm.HMM()
-example2.set_parameters(transitions = [[0.90, 0.10], [0.20, 0.80]],
+example2.set_parameters(transitions = [[0.95, 0.05], [0.50, 0.50]],
                         emissions = [[0.1, 0.2, 0.7], [0.5, 0.3, 0.2]],
                         initial = [0.25, 0.75])
 e, s = example2.sim(10000)
@@ -42,9 +42,16 @@ print('actual state sequence: {0}'.format(s[:50]))
 
 for i in range(50):
     print (' ***** ITERATION {0} *****'.format(i))
-    tr, em, init = example3.update(e)
+    tr, em, init, likelihood = example3.update(e)
+    if i == 0:
+        original_likelihood = likelihood
+
+    print('current log likelihood: {0}'.format(likelihood))
     example3.set_parameters(transitions = tr, emissions = em, initial = init)
 
+print('initial log likelihood: {0}'.format( original_likelihood))
+print('final log likelihood: {0}'.format(likelihood))
+    
 print('final parameters:')
 print('transitions:\n{0}'.format(tr))
 print('emissions:\n{0}'.format(em))
